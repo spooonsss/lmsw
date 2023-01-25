@@ -1,5 +1,7 @@
 //heavily modified from ruby/audio/directsound.cpp (original author: byuu)
 
+#pragma comment(lib, "Dsound.lib")
+
 #include <stdint.h>
 
 void audio_init(double sample_rate);

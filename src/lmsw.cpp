@@ -2,11 +2,33 @@
  #if defined(CPPCLI)
   #define EXPORT extern "C" WINAPI
  #elif defined(_WIN32)
-  #define EXPORT extern "C" WINAPI __declspec(dllexport)
+  #define EXPORT(t) extern "C" __declspec(dllexport) t WINAPI 
  #else
   #define EXPORT extern "C" WINAPI __attribute__((visibility ("default")))
  #endif
 #endif
+
+#pragma comment(linker, "/export:LMSW_Active@0=_LMSW_Active@0")
+#pragma comment(linker, "/export:LMSW_ApiVersion@0=_LMSW_ApiVersion@0")
+#pragma comment(linker, "/export:LMSW_DrawBorder@28=_LMSW_DrawBorder@28")
+#pragma comment(linker, "/export:LMSW_DrawEmulated@28=_LMSW_DrawEmulated@28")
+#pragma comment(linker, "/export:LMSW_Functions@12=_LMSW_Functions@12")
+#pragma comment(linker, "/export:LMSW_Init@0=_LMSW_Init@0")
+#pragma comment(linker, "/export:LMSW_Init_Private@0=_LMSW_Init_Private@0")
+#pragma comment(linker, "/export:LMSW_KeyUsed@4=_LMSW_KeyUsed@4")
+#pragma comment(linker, "/export:LMSW_LoadLevel@4=_LMSW_LoadLevel@4")
+#pragma comment(linker, "/export:LMSW_LoadROM@8=_LMSW_LoadROM@8")
+#pragma comment(linker, "/export:LMSW_Pause@4=_LMSW_Pause@4")
+#pragma comment(linker, "/export:LMSW_ReloadROM@8=_LMSW_ReloadROM@8")
+#pragma comment(linker, "/export:LMSW_ReloadSprites@8=_LMSW_ReloadSprites@8")
+#pragma comment(linker, "/export:LMSW_SetColors@16=_LMSW_SetColors@16")
+#pragma comment(linker, "/export:LMSW_SetSound@4=_LMSW_SetSound@4")
+#pragma comment(linker, "/export:LMSW_Step@0=_LMSW_Step@0")
+#pragma comment(linker, "/export:LMSW_Stop@0=_LMSW_Stop@0")
+#pragma comment(linker, "/export:LMSW_SwitchFlags@4=_LMSW_SwitchFlags@4")
+#pragma comment(linker, "/export:LMSW_Term@0=_LMSW_Term@0")
+#pragma comment(linker, "/export:LMSW_Variables@8=_LMSW_Variables@8")
+
 
 #define LINE3(l) #l
 #define LINE2(l) LINE3(l)
@@ -107,11 +129,11 @@ const uint16_t * Map16L2V;//$7x:E400
 const uint16_t * map16tiles;
 
 //This one loads a level ID, for use when Mario enters a pipe through LMSW.
-CALLBACK void (*LoadLevel)(int id);
+void (__stdcall *LoadLevel)(int id);
 
 //These one scrolls the level a bit. delta is how many tiles to move.
-CALLBACK void (*ScrollLevelX)(int delta);
-CALLBACK void (*ScrollLevelY)(int delta);
+void (__stdcall *ScrollLevelX)(int delta);
+void (__stdcall *ScrollLevelY)(int delta);
 
 static uint32_t mypixels[2][224*256];
 static uint16_t snesoff_x[2];
@@ -403,7 +425,7 @@ static void WriteRAM(int address, uint8_t value, bool snesram = false)
 }
 #undef remap
 
-EXPORT void LMSW_Variables(const uint16_t * leveltable, const uint16_t * map16)
+EXPORT(void) LMSW_Variables(const uint16_t * leveltable, const uint16_t * map16)
 {
 	Map16L1H=leveltable;
 	Map16L2H=leveltable+0x1B00;
@@ -412,7 +434,7 @@ EXPORT void LMSW_Variables(const uint16_t * leveltable, const uint16_t * map16)
 	map16tiles=map16;
 }
 
-EXPORT void LMSW_Functions(CALLBACK void (*pLoadLevel)(int id), CALLBACK void (*pScrollLevelX)(int delta), CALLBACK void (*pScrollLevelY)(int delta))
+EXPORT(void) LMSW_Functions( void (CALLBACK *pLoadLevel)(int id), void (CALLBACK  *pScrollLevelX)(int delta), void (CALLBACK *pScrollLevelY)(int delta))
 {
 	LoadLevel=pLoadLevel;
 	ScrollLevelX=pScrollLevelX;
@@ -443,7 +465,7 @@ int keys[16]={
 #define KeyMap() /* */ \
 	for (int i=0;i<16;i++) { MapKey((i), (keys[i])); }
 
-CALLBACK void myControllerPoll(int16_t * controller)
+void CALLBACK myControllerPoll(int16_t * controller)
 {
 	for (int i=0;i<16;i++) controller[i]=0;
 	if (ModifierKeys() || lmstate<lmst_on) return;
@@ -451,10 +473,10 @@ CALLBACK void myControllerPoll(int16_t * controller)
 	KeyMap();
 #undef MapKey
 }
-CALLBACK void (*PollController)(int16_t * controller)=myControllerPoll;
+void (CALLBACK *PollController)(int16_t * controller)=myControllerPoll;
 
 //Note that this can return true even if LMSW is inactive. Use LMSW_Active() as well.
-EXPORT bool LMSW_KeyUsed(char c)
+EXPORT(bool) LMSW_KeyUsed(char c)
 {
 	if (ModifierKeys()) return false;
 #define MapKey(gamepad, keyboard) if (c==keyboard) return true
@@ -610,7 +632,7 @@ static bool emuEnvironment(unsigned cmd, void *data)
 			CON_SNES_NORMAL(printf("Timeout for ram %X 1 of 3: %i/%i\n", ram, frames, timeout));
 #define WaitForGameMode(mode, timeout) WaitForRAM(0x7E0100, <, mode, timeout)
 
-static WINAPI DWORD ThreadProc(LPVOID ignored)
+static DWORD WINAPI ThreadProc(LPVOID ignored)
 {
 	int last13=0;
 	int time13=0;
@@ -817,13 +839,14 @@ retryloop:
 			case LMSW_MSG_RELOADROM:
 				{
 					audio_clear();
-					uint8_t tmpsavestate[preload_statelen];
+					uint8_t *tmpsavestate = (uint8_t*)malloc(preload_statelen);
 					retro_serialize(tmpsavestate, preload_statelen);
 					retro_unload_game();
 					retro_game_info gameinfo={NULL, (void*)msg.lParam, msg.wParam, NULL};
 					retro_load_game(&gameinfo);
 					free((void*)msg.lParam);
 					retro_unserialize(tmpsavestate, preload_statelen);
+					free(tmpsavestate);
 					wram=((uint8_t*)retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM))-0x7E0000;//no point not reloading this
 					if (sa1)
 					{
@@ -1296,15 +1319,15 @@ EXPORT const char * LMSW_Init()
 
 EXPORT const char * LMSW_Init_Private()
 #else
-EXPORT const char * LMSW_Init();
-EXPORT const char * LMSW_Init_Private()
+EXPORT(const char *) LMSW_Init();
+EXPORT(const char *) LMSW_Init_Private()
 {
 	const char * ret=LMSW_Init();
 	CON_LM_NORMAL(puts("LMSW_Init_Private"));
 	return ret;
 }
 
-EXPORT const char * LMSW_Init()
+EXPORT(const char *) LMSW_Init()
 #endif
 {
 	srand(time(NULL));
@@ -1338,12 +1361,12 @@ EXPORT const char * LMSW_Init()
 	return NULL;
 }
 
-EXPORT int LMSW_ApiVersion()
+EXPORT(int) LMSW_ApiVersion()
 {
 	return 101;
 }
 
-EXPORT void LMSW_Pause(int pause)
+EXPORT(void) LMSW_Pause(int pause)
 {
 	CON_LM_NORMAL(puts("LMSW_Pause"));
 	if (lmstate==lmst_off) return;
@@ -1368,13 +1391,13 @@ EXPORT void LMSW_Pause(int pause)
 	}
 }
 
-EXPORT void LMSW_Step()
+EXPORT(void) LMSW_Step()
 {
 	CON_LM_VERBOSE(puts("LMSW_Step"));
 	PostThreadMessage(threadid, LMSW_MSG_STEP, 0, 0);
 }
 
-EXPORT void LMSW_Stop()
+EXPORT(void) LMSW_Stop()
 {
 	CON_LM_NORMAL(puts("LMSW_Stop"));
 	if (lmstate==lmst_off) return;
@@ -1383,7 +1406,7 @@ EXPORT void LMSW_Stop()
 	snesstate=snst_off;
 }
 
-EXPORT void LMSW_Term()
+EXPORT(void) LMSW_Term()
 {
 	CON_LM_NORMAL(puts("LMSW_Term"));
 	if (lmstate!=lmst_off) LMSW_Stop();
@@ -1437,7 +1460,7 @@ static void PrepareROM(unsigned char * romdata)
 	}
 }
 
-EXPORT void LMSW_LoadROM(const char * romdata, int romlen)
+EXPORT(void) LMSW_LoadROM(const char * romdata, int romlen)
 {
 	CON_LM_NORMAL(puts("LMSW_LoadROM"));
 	gfxplus2=(romdata[0x001E2]==0x5C);//$00:81E2, fusoya says this is what LM does
@@ -1448,7 +1471,7 @@ EXPORT void LMSW_LoadROM(const char * romdata, int romlen)
 	PostThreadMessage(threadid, LMSW_MSG_LOADROM, (WPARAM)romlen, (LPARAM)romdatacopy);
 }
 
-EXPORT void LMSW_ReloadROM(const char * romdata, int romlen)
+EXPORT(void) LMSW_ReloadROM(const char * romdata, int romlen)
 {
 	CON_LM_NORMAL(puts("LMSW_ReloadROM"));
 	if (reloadConfig >= 1)
@@ -1472,7 +1495,7 @@ EXPORT void LMSW_ReloadROM(const char * romdata, int romlen)
 	PostThreadMessage(threadid, LMSW_MSG_RELOADROM, (WPARAM)romlen, (LPARAM)romdatacopy);
 }
 
-EXPORT void LMSW_ReloadSprites(const char * sprdata, int len)
+EXPORT(void) LMSW_ReloadSprites(const char * sprdata, int len)
 {
 	CON_LM_NORMAL(puts("LMSW_ReloadSprites"));
 	char * sprdatacopy=(char*)malloc(len);
@@ -1508,7 +1531,7 @@ inline void SetTile(int x, int y, bool layer2, uint16_t tile, uint8_t frameId)
 	}
 }
 
-EXPORT void LMSW_LoadLevel(int levelnum_)
+EXPORT(void) LMSW_LoadLevel(int levelnum_)
 {
 	CON_LM_NORMAL(printf("LMSW_LoadLevel %X\n", levelnum_));
 	lmstate=lmst_on;
@@ -1529,7 +1552,7 @@ static int gettransp(uint32_t col)
 	return ((col>>24)==255)?256:(col>>24);
 }
 
-EXPORT void LMSW_SetColors(uint32_t mainunpause, uint32_t mainpause, uint32_t brdrunpause, uint32_t brdrpause)
+EXPORT(void) LMSW_SetColors(uint32_t mainunpause, uint32_t mainpause, uint32_t brdrunpause, uint32_t brdrpause)
 {
 #if con_lm>=con_verbose
 	puts("LMSW_SetColors");
@@ -1550,7 +1573,7 @@ EXPORT void LMSW_SetColors(uint32_t mainunpause, uint32_t mainpause, uint32_t br
 
 	HDC hdc = CreateCompatibleDC(NULL);
 
-EXPORT void LMSW_DrawEmulated(uint32_t * bitmap, int pitch, int xoff, int yoff, int width, int height, RECT * rect)
+EXPORT(void) LMSW_DrawEmulated(uint32_t * bitmap, int pitch, int xoff, int yoff, int width, int height, RECT * rect)
 {
 	CON_LM_VERBOSE(puts("LMSW_DrawEmulated"));
 	if (hijackLMsPaletteToo)
@@ -1803,7 +1826,7 @@ EXPORT void LMSW_DrawEmulated(uint32_t * bitmap, int pitch, int xoff, int yoff, 
 #undef POS
 }
 
-EXPORT void LMSW_DrawBorder(uint32_t * bitmap, int pitch, int xoff, int yoff, int width, int height, RECT * rect)
+EXPORT(void) LMSW_DrawBorder(uint32_t * bitmap, int pitch, int xoff, int yoff, int width, int height, RECT * rect)
 {
 	CON_LM_VERBOSE(puts("LMSW_DrawBorder"));
 	if (rect)
@@ -1937,7 +1960,7 @@ EXPORT void LMSW_DrawBorder(uint32_t * bitmap, int pitch, int xoff, int yoff, in
 #define LMSW_PAUSE 2//Paused. Can draw, but won't move.
 #define LMSW_NOMOVE 3//Input disabled.
 #define LMSW_ON 4//Currently active.
-EXPORT int LMSW_Active()
+EXPORT(int) LMSW_Active()
 {
 	if (message != NULL)
 	{
@@ -1984,13 +2007,13 @@ EXPORT int LMSW_Active()
 	return LMSW_ON;
 }
 
-EXPORT void LMSW_SetSound(bool on)
+EXPORT(void) LMSW_SetSound(bool on)
 {
 	CON_LM_NORMAL(puts("LMSW_SetSound"));
 	mute=!on;
 }
 
-EXPORT void LMSW_SwitchFlags(int flagmask)
+EXPORT(void) LMSW_SwitchFlags(int flagmask)
 {
 	switchpalaces[0]=(flagmask&1)>>0;
 	switchpalaces[1]=(flagmask&2)>>1;

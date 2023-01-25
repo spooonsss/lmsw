@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="src\audio.cpp" />
+    <ClCompile Include="src\derp.cpp" />
+    <ClCompile Include="src\derp2.cpp" />
+    <ClCompile Include="src\keyconf.cpp" />
+    <ClCompile Include="src\libretrow.cpp" />
+    <ClCompile Include="src\lmsw.cpp" />
+  </ItemGroup>
+</Project>
