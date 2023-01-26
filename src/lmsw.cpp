@@ -1,3 +1,4 @@
+#define NOMINMAX
 #ifndef EXPORT
  #if defined(CPPCLI)
   #define EXPORT extern "C" WINAPI
@@ -180,7 +181,7 @@ static DWORD threadid;
 static HANDLE threadhandle;
 
 static const char * message;
-static volatile const char * romdata;
+//static volatile const char * romdata;
 static volatile int romlen;
 
 static uint8_t * preload_savestate=NULL;
@@ -214,6 +215,7 @@ static int ramwatches[256];
 static const char * volatile retroloaderr;
 
 volatile bool sa1;
+volatile uint8_t rom_801E0;
 volatile int lmver;
 
 uint8_t * wram;
@@ -281,7 +283,9 @@ static uint8_t* GetRAMPointer(int address, bool snesram = false)
 	if (sa1 && !snesram)
 	{
 		if (0);
+		remap(0x7E161A, 0x7E7578, bwram); // sprite_index_in_level
 		remap(0x7E1938, 0x7F8A00, bwram);
+		remap(0x7FAF00, 0x7F8A00, bwram);
 		remap(0x7E009E, 0x3200, iram);
 		remap(0x7E00D8, 0x3216, iram);
 		remap(0x7E00E4, 0x322C, iram);
@@ -331,7 +335,9 @@ static uint8_t ReadRAM(int address, bool snesram = false)
 	if (sa1 && !snesram)
 	{
 		if (0);
-		remap(0x7E1938, 0x7F8A00, bwram);
+		remap(0x7E161A, 0x7E7578, bwram); // sprite_index_in_level
+		remap(0x7E1938, 0x7F8A00, bwram); // sprite_load_table
+		remap(0x7FAF00, 0x7F8A00, bwram); // sprite_load_table
 		remap(0x7E009E, 0x3200, iram);
 		remap(0x7E00D8, 0x3216, iram);
 		remap(0x7E00E4, 0x322C, iram);
@@ -823,9 +829,21 @@ retryloop:
 						ExitProcess(1);
 					}
 					memcpy(GetRAMPointer(0x7F4000, true), ramroutinehack, sizeof(ramroutinehack));
-					WriteRAM(0x7F8000, 0x4C, true);//JMP $4000
-					WriteRAM(0x7F8001, 0x00, true);
-					WriteRAM(0x7F8002, 0x40, true);
+					if (sa1) {
+						if (GetRAMPointer(0x7F801C, true)[0] != 0x6B) {
+							ShowError("Internal error: unsupported SA1-Pack version");
+							ExitProcess(1);
+						}
+						WriteRAM(0x7F801C, 0x4C, true);//JMP $4000 at end of SA1-Pack-140/boost/oam.asm oam_clear_invoke
+						WriteRAM(0x7F801D, 0x00, true);
+						WriteRAM(0x7F801E, 0x40, true);
+						WriteRAM(0x7F4009, 0x6B, true); // replace RTL we clobbered at 7F801C
+					}
+					else {
+						WriteRAM(0x7F8000, 0x4C, true);//JMP $4000
+						WriteRAM(0x7F8001, 0x00, true);
+						WriteRAM(0x7F8002, 0x40, true);
+					}
 
 					for (int i=0;i<numinits[0];i++)
 					{
@@ -955,7 +973,15 @@ retryloop:
 			case LMSW_MSG_RELOADSPR:
 				{
 					if (ReadRAM(0x7E0D9B)&0x80) break;
-					memset(GetRAMPointer(0x7E1938), 0, (sa1) ? 255 : 128);
+					// "Starting in version 3.11, 3rd party programs can also notify Lunar Magic that the sprite
+					// count limit per level has been increased to 255 to avoid the sprite count warning message appearing.
+					// To do this, clear the lowest bit of the byte at 0x801E0 PC"
+					if (sa1 || (rom_801E0 & 1) == 0) {
+						memset(GetRAMPointer(0x7FAF00), 0, 255);
+					}
+					else {
+						memset(GetRAMPointer(0x7E1938), 0, (sa1) ? 255 : 128);
+					}
 					memset(GetRAMPointer(0x7E161A), 0xFF, (sa1) ? 22 : 12);
 					const uint8_t reloadspritecode[]={
 						0x22, 0x51, 0xA7, 0x02,//JSL $02A751
@@ -1020,7 +1046,7 @@ retryloop:
 					if (snesstate>snst_off)
 					{
 						retro_unload_game();
-						free((void*)romdata);
+						//free((void*)romdata);
 					}
 					if (preload_savestate)
 					{
@@ -1421,6 +1447,7 @@ static void PrepareROM(unsigned char * romdata)
 {
 	// determine sa-1
 	sa1 = romdata[0x7FD6] == 0x35;
+	rom_801E0 = romdata[0x801E0-0x200]; // aka $0FFFE0
 
 	if (memcmp(romdata+0x7F0A0, "Lunar Magic", 11) == 0)
 	{
