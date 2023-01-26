@@ -1,0 +1,11 @@
+image: Visual Studio 2022
+
+build_script:
+  - msbuild lmsw.sln /t:build /p:Configuration=Release;Platform=x86 /m /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
+
+after_build:
+  - 'sha1sum Win32/Release/*.dll'
+  - 'sha1sum Win32/Release/*.pdb'
+artifacts:
+  - path: Win32/Release/lmsw.dll
+  - path: Win32/Release/lmsw.pdb
