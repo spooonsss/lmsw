@@ -102,13 +102,13 @@ bool retro_load();
 #define puts DO_NOT_USE
 #endif
 
-inline int snestopc(int addr)
+int snestopc(int addr)
 {
 	if (addr<0 || addr>0xFFFFFF) return -1;//not 24bit
 	if ((addr&0x700000)==0x700000 ||//wram, sram
 		(addr&0x008000)==0x000000)//hardware regs, ram mirrors, rom mirrors, other strange junk
 			return -1;
-	addr=((addr&0x7F0000)>>1|(addr&0x7FFF));
+	addr=((addr&0x7F0000)>>1|(addr&0x7FFF)); // FIXME wrong for big sa1 roms
 	return addr;
 }
 
@@ -181,8 +181,8 @@ static DWORD threadid;
 static HANDLE threadhandle;
 
 static const char * message;
-//static volatile const char * romdata;
-static volatile int romlen;
+// static volatile const char * g_romdata;
+// static volatile int g_romlen;
 
 static uint8_t * preload_savestate=NULL;
 static int preload_statelen;
@@ -216,6 +216,7 @@ static const char * volatile retroloaderr;
 
 volatile bool sa1;
 volatile uint8_t rom_801E0;
+volatile bool rom_has_retry;
 volatile int lmver;
 
 uint8_t * wram;
@@ -1443,11 +1444,25 @@ EXPORT(void) LMSW_Term()
 
 uint16_t pipedat[4][8][4];
 
-static void PrepareROM(unsigned char * romdata)
+static void PrepareROM(unsigned char* romdata, int romlen)
 {
 	// determine sa-1
 	sa1 = romdata[0x7FD6] == 0x35;
-	rom_801E0 = romdata[0x801E0-0x200]; // aka $0FFFE0
+	rom_801E0 = romdata[0x801E0 - 0x200]; // aka $0FFFE0
+	// KevinM UberASM retry detection
+	// 'You can check if a ROM has this patch by doing "if read4(read3($00A2EB)-33) == $72746552"'
+	rom_has_retry = false;
+	unsigned char JML = 0x5C;
+	const auto read3 = [&](const int addr) {
+		if (addr < 0 || addr + 2 > romlen) {
+			return -1;
+		}
+		return romdata[addr] + (romdata[addr + 1] << 8) + (romdata[addr + 2] << 16);
+	};
+	int retry_index = snestopc(read3(snestopc(0x00A2EB)) - 33);
+	if (romdata[snestopc(0x00A2EA)] == JML && retry_index > 0 && retry_index + 5 < romlen) {
+		rom_has_retry = strncmp("Retry", (const char*)romdata + retry_index, 5) == 0;
+	}
 
 	if (memcmp(romdata+0x7F0A0, "Lunar Magic", 11) == 0)
 	{
@@ -1493,7 +1508,7 @@ EXPORT(void) LMSW_LoadROM(const char * romdata, int romlen)
 	gfxplus2=(romdata[0x001E2]==0x5C);//$00:81E2, fusoya says this is what LM does
 	unsigned char * romdatacopy=(unsigned char*)malloc(romlen);
 	memcpy(romdatacopy, romdata, romlen);
-	PrepareROM(romdatacopy);
+	PrepareROM(romdatacopy, romlen);
 //FILE*f=fopen("r.swc","wb");fwrite(romdata,1,romlen,f);fclose(f);
 	PostThreadMessage(threadid, LMSW_MSG_LOADROM, (WPARAM)romlen, (LPARAM)romdatacopy);
 }
@@ -1518,7 +1533,7 @@ EXPORT(void) LMSW_ReloadROM(const char * romdata, int romlen)
 	}
 	unsigned char * romdatacopy=(unsigned char*)malloc(romlen);
 	memcpy(romdatacopy, romdata, romlen);
-	PrepareROM(romdatacopy);
+	PrepareROM(romdatacopy, romlen);
 	PostThreadMessage(threadid, LMSW_MSG_RELOADROM, (WPARAM)romlen, (LPARAM)romdatacopy);
 }
 
@@ -1845,7 +1860,9 @@ EXPORT(void) LMSW_DrawEmulated(uint32_t * bitmap, int pitch, int xoff, int yoff,
 			 ReadRAM(0x7E0100)==0x0D ||//fade to overworld
 			 ReadRAM(0x7E0100)==0x0E ||//run overworld
 			 ReadRAM(0x7E0100)==0x16 ||//load Time Up
-			 ReadRAM(0x7E0100)==0x17)//Time Up
+			 ReadRAM(0x7E0100)==0x17 ||//Time Up
+		     (rom_has_retry && ReadRAM(0x7E0071)==0x09 && ReadRAM(0x7E1496) < 0xF) // dying pose and pose timer
+		)
 	{
 		WriteRAM(0x7E0100, 0x00);//to not trigger this one again
 		LMSW_Stop();
