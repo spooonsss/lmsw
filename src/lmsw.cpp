@@ -232,7 +232,7 @@ int palettetype=0;
 const uint8_t pal5to8[3][32]={{
 //zsnes mode
 	0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38,
-	0x40, 0x48, 0x58, 0x50, 0x68, 0x60, 0x70, 0x78,
+	0x40, 0x48, 0x50, 0x58, 0x60, 0x68, 0x70, 0x78,
 	0x80, 0x88, 0x90, 0x98, 0xA0, 0xA8, 0xB0, 0xB8,
 	0xC0, 0xC8, 0xD0, 0xD8, 0xE0, 0xE8, 0xF0, 0xF8,
 },{
@@ -1772,6 +1772,13 @@ EXPORT(void) LMSW_DrawEmulated(uint32_t * bitmap, int pitch, int xoff, int yoff,
 //h++;
 //if (h==60) exit(0);
 //X++;
+		if (rom_has_retry && ReadRAM(0x7E0071) == 0x09) { // dying pose
+			// $13 and $14 are frozen if !prompt_freeze = 2, so just bail immediately
+			WriteRAM(0x7E0100, 0x00);//to not trigger this one again
+			LMSW_Stop();
+			return;
+		}
+
 		static int framecounter=0;
 		framecounter++;
 		//if ((framecounter&1)==0)
@@ -1860,8 +1867,7 @@ EXPORT(void) LMSW_DrawEmulated(uint32_t * bitmap, int pitch, int xoff, int yoff,
 			 ReadRAM(0x7E0100)==0x0D ||//fade to overworld
 			 ReadRAM(0x7E0100)==0x0E ||//run overworld
 			 ReadRAM(0x7E0100)==0x16 ||//load Time Up
-			 ReadRAM(0x7E0100)==0x17 ||//Time Up
-		     (rom_has_retry && ReadRAM(0x7E0071)==0x09 && ReadRAM(0x7E1496) < 0xF) // dying pose and pose timer
+			 ReadRAM(0x7E0100)==0x17   //Time Up
 		)
 	{
 		WriteRAM(0x7E0100, 0x00);//to not trigger this one again
