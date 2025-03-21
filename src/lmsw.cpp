@@ -1772,6 +1772,13 @@ EXPORT(void) LMSW_DrawEmulated(uint32_t * bitmap, int pitch, int xoff, int yoff,
 //h++;
 //if (h==60) exit(0);
 //X++;
+		if (rom_has_retry && ReadRAM(0x7E0071) == 0x09) { // dying pose
+			// $13 and $14 are frozen if !prompt_freeze = 2, so just bail immediately
+			WriteRAM(0x7E0100, 0x00);//to not trigger this one again
+			LMSW_Stop();
+			return;
+		}
+
 		static int framecounter=0;
 		framecounter++;
 		//if ((framecounter&1)==0)
@@ -1860,8 +1867,7 @@ EXPORT(void) LMSW_DrawEmulated(uint32_t * bitmap, int pitch, int xoff, int yoff,
 			 ReadRAM(0x7E0100)==0x0D ||//fade to overworld
 			 ReadRAM(0x7E0100)==0x0E ||//run overworld
 			 ReadRAM(0x7E0100)==0x16 ||//load Time Up
-			 ReadRAM(0x7E0100)==0x17 ||//Time Up
-		     (rom_has_retry && ReadRAM(0x7E0071)==0x09 && ReadRAM(0x7E1496) < 0xF) // dying pose and pose timer
+			 ReadRAM(0x7E0100)==0x17   //Time Up
 		)
 	{
 		WriteRAM(0x7E0100, 0x00);//to not trigger this one again
