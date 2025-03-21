@@ -1,6 +1,6 @@
 	LMSW: An emulator inside LM
-		version 1.10
-	     by Alcaro, TheBiob
+		version 1.20
+	     by Alcaro, TheBiob, modified by spooonsss
 	(Original software by Alcaro)
 
 This is an emulator directly inside Lunar Magic. It is intended to allow quicker testing of the
@@ -59,6 +59,12 @@ Requirements for different cores:
    Other cores without these features will still work for non SA-1 ROMs
 
 Changelog
+
+v1.20 (03/21/2025, spooonsss)
+* SA-1 1.40 Support (earlier versions will not work)
+* Fix some colors displaying incorrectly
+* Support for Retry patch
+* retro.dll > snes9x 1.60
 
 v1.10 (07/23/2019, TheBiob)
 * SA-1 Support
